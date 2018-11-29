@@ -2,6 +2,7 @@ import argparse
 import csv
 import sys
 import pathlib
+import math
 import webbrowser
 import tsp_aco
 
@@ -22,8 +23,9 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--file', '-F', default='worldcitiespop-part1.txt')
     parser.add_argument('--country', '-C', default='hu')
-    parser.add_argument('-n', type=int, default=20)
+    parser.add_argument('-n', type=int, default=6)
     parser.add_argument('-m', type=int, default=2)
+    parser.add_argument('--iterations', '-I', type=int)
     parser.add_argument('--out', '-O')
     parser.add_argument('--format', '-f', choices=['readable', 'csv', 'numpy'], default='csv')
     parser.add_argument('--show', '-S', action='store_true')
@@ -72,9 +74,9 @@ def main():
         callback=tsp_aco.GenerateVisualSvg('frames', coordinates),
         herdness=2.0,
         greedness=1.0,
-        evaporation=0.2,
-        max_iteration=int(opts.n ** 1.5),
-        n_probas=int(opts.n ** 1.5) * opts.m,
+        evaporation=0.1,
+        max_iteration=opts.iterations or int(opts.n * math.log(opts.n)),
+        n_probas=int(opts.n * math.log(opts.n)) * opts.m,
         n_salesmans=opts.m,
         objective='max',
     )

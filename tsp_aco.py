@@ -12,7 +12,9 @@ def solve_tsp(distances, callback=lambda utility, path: None,
               max_iteration=10,
               n_salesmans=1,
               objective='max',
-              _debug=True):
+              _debug=False):
+    if _debug > 0:
+        _debug -= 1
     n = len(distances)
     n_probas = n_probas or n
     assert n_salesmans < n, "if there are no less salesmans than cities, " \
@@ -26,62 +28,52 @@ def solve_tsp(distances, callback=lambda utility, path: None,
     # It is from classic ACO algorithm
 
     # walk utility is amount of ant's pheromone on the path between nodes
-    walk_utility = [[1 / (mean_d*n)] * n for _ in range(n)]
-    # walk_utility = [[1 / (min_d*n)] * n for _ in range(n)]
-    dissimilarity = [
-        _softmax(row)
-        for row in distances
-    ]
-    cluster_utility = [
-        [1/n for _ in range(n)]
-        for _ in range(n)
-    ]
-    walk_heuristic = [
-        [
+    move_utility = [[1 / (n*mean_d)] * n for _ in range(n)]
+    jump_utility = [[1 / (n*mean_d)] * n for _ in range(n)]
+    move_heuristic = [
+        _softmax([
             (1 / d) ** greedness if d else 0
             for d in row
-        ]
+        ])
+        for row in distances
+    ]
+    jump_heuristic = [
+        _softmax([
+            1
+            # d ** greedness
+            for d in row
+        ])
         for row in distances
     ]
     if _debug:
-        print('initial walk_utility =', 1 / (mean_d*n))
+        print('initial move_utility =', move_utility[0][0])
+        print('initial jump_utility =', jump_utility[0][0])
 
-    # assignment properties are responsible for multi-TSP extension
-    # They manage clustering of initial graph into groups
-
-    # assignment_utility = [
-    #     # [sum(row) / n for row in walk_heuristic]
-    #     [1/n for _ in range(n)]
-    #     for _ in range(n_salesmans)
-    # ]
-
-    # evidence is unscaled probabilities of each transition on current round.
+    # evidences are unscaled probabilities of each transition on current round.
     # initial evidence is proportional to heuristic, so don't do anything here
-    evidence = walk_heuristic
-    clustership = [
-        [
-            (1 / ds)
-            for ds in ds_row
-        ]
-        for ds_row in dissimilarity
-    ]
+    m_evidence = move_heuristic
+    j_evidence = jump_heuristic
 
     best_paths = _make_aco_proba(
             n, n_salesmans,
-            evidence, clustership,
+            m_evidence,
+            j_evidence,
             greedy=True)
+    if _debug:
+        print('initial m_evidence')
+        print(_format2d(m_evidence))
+        print('initial j_evidence')
+        print(_format2d(j_evidence))
 
-    callback(walk_utility, cluster_utility, best_paths)
+    callback(best_paths, move_utility, j_evidence)
 
     for _ in range(max_iteration):
         # there is no early-stop criteria actually
 
-        # assignment_utility_sums = list(map(sum, assignment_utility))
-
         # accumulate new pheromone in separate buffer
         # to keep transition probabilities same during one round of probas
-        walk_utility_update = [[0] * n for _ in range(n)]
-        cluster_utility_update = [[0] * n for _ in range(n)]
+        move_utility_update = [[0] * n for _ in range(n)]
+        jump_utility_update = [[0] * n for _ in range(n)]
 
         # 1) make randomized probas several times (E-step)
         # 2) calculate the objective and pheromone update for each (pre-M-step)
@@ -89,18 +81,12 @@ def solve_tsp(distances, callback=lambda utility, path: None,
             # do the proba
             proba_paths = _make_aco_proba(
                 n, n_salesmans,
-                evidence, clustership,
+                m_evidence,
+                j_evidence,
                 greedy=False)
 
             # calculate the objective
-            lengths = []
-            for pth in proba_paths:
-                length = 0
-                for i in range(1, len(pth)):
-                    length += distances[i-1][i]
-                if length == 0:
-                    length = 1
-                lengths.append(length)
+            lengths = [_path_len(p, distances) for p in proba_paths]
             max_length = max(lengths)
             total_length = sum(lengths)
             mean_length = total_length / len(lengths)
@@ -114,71 +100,60 @@ def solve_tsp(distances, callback=lambda utility, path: None,
 
             # commit to pheromone update buffer
 
-            for s, pth in enumerate(proba_paths):
-                l = lengths[s]
-                walk_upd = (1 / l) / n_probas
-                cluster_upd = 1 / max(1, l)
-                # cluster_upd = 1 / (lengths[s]-mean_length) / n_probas
-                # if lengths[s] == max_length:
-                #     cluster_upd = -lengths[s]
-                # else:
-                #     cluster_upd = 1 / lengths[s]
-                for i in range(len(pth)):
-                    c1, c2 = pth[i-1], pth[i]
-                    walk_utility_update[c2][c1] += walk_upd
-                    walk_utility_update[c1][c2] += walk_upd
-                    # if c1 != c2:
-                    cluster_utility_update[c2][c1] += cluster_upd
-                    cluster_utility_update[c1][c2] += cluster_upd
+            upd = (1 / cost) / n_probas
+            m_upd = upd
+            j_upd = upd / len(proba_paths)
+            for k, pth1 in enumerate(proba_paths):
+                if lengths[k] == max_length:
+                    continue
+                for i in range(len(pth1)):
+                    c1, c2 = pth1[i-1], pth1[i]
+                    move_utility_update[c2][c1] += m_upd
+                    move_utility_update[c1][c2] += m_upd
+                for pth2 in proba_paths[k+1:]:
+                    for c1, c2 in itertools.product(pth1, pth2):
+                        jump_utility_update[c1][c2] += j_upd
+                        jump_utility_update[c2][c1] += j_upd
+                # jump_utility_update[prev_pth[-1]][pth1[0]] += upd
+                # jump_utility_update[pth1[0]][prev_pth[-1]] += upd
 
             if _debug:
                 print('proba_paths =', proba_paths)
         if _debug:
-            print('walk_utility_update')
-            print(_format2d(walk_utility_update))
-            print('cluster_utility_update')
-            print(_format2d(cluster_utility_update))
+            print('move_utility_update')
+            print(_format2d(move_utility_update))
+            print('jump_utility_update')
+            print(_format2d(jump_utility_update))
 
         # update pheromone and re-calculate transition probs (M-step)
         for i in range(n):
-            cl_upd = _softmax(cluster_utility_update[i])
             for j in range(n):
                 if i == j:
                     continue
-                walk_utility[i][j] = (
-                    (1-evaporation) * walk_utility[i][j]
-                    + evaporation * walk_utility_update[i][j]
+                move_utility[i][j] = (
+                    (1-evaporation) * move_utility[i][j]
+                    + evaporation * move_utility_update[i][j]
                 )
-                # cluster_utility[i][j] = (
-                #     (1 - evaporation) * cluster_utility[i][j]
-                #     + evaporation * cluster_utility_update[i][j]
-                # )
-                cl_ev = 0.1
-                cluster_utility[i][j] = (
-                    (1 - cl_ev) * cluster_utility[i][j]
-                    + cl_ev * cl_upd[j]
+                jump_utility[i][j] = (
+                    (1-evaporation) * jump_utility[i][j]
+                    + evaporation * jump_utility_update[i][j]
                 )
-            # min_cu = min(cluster_utility[i])
-            # sum_cu = sum(cluster_utility[i])
-            # normer =
-            # cluster_utility[i] = _softmax(cluster_utility[i])
         if _debug:
-            print('walk_utility')
-            print(_format2d(walk_utility))
-            print('cluster_utility')
-            print(_format2d(cluster_utility))
+            print('move_utility')
+            print(_format2d(move_utility))
+            print('jump_utility')
+            print(_format2d(jump_utility))
 
-        evidence = [
+        m_evidence = [
             [
-                walk_heuristic[i][j] * (walk_utility[i][j] ** herdness)
+                move_heuristic[i][j] * (move_utility[i][j] ** herdness)
                 for j in range(n)
             ]
             for i in range(n)
         ]
-        clustership = [
+        j_evidence = [
             [
-                (cluster_utility[i][j] ** 1) / (dissimilarity[i][j] ** greedness)
-                # (cluster_utility[i][j] ** herdness) / (dissimilarity[i][j] ** greedness)
+                jump_heuristic[i][j] * (jump_utility[i][j] ** herdness)
                 for j in range(n)
             ]
             for i in range(n)
@@ -188,9 +163,10 @@ def solve_tsp(distances, callback=lambda utility, path: None,
         # so callback can see the progress
         best_paths = _make_aco_proba(
             n, n_salesmans,
-            evidence, clustership,
+            m_evidence,
+            j_evidence,
             greedy=True)
-        callback(walk_utility, cluster_utility, best_paths)
+        callback(best_paths, move_utility, j_evidence)
 
     return best_paths
 
@@ -203,108 +179,40 @@ def _format2d(matrix):
     return '\n'.join(map(_format1d, matrix))
 
 
-def _make_aco_proba(n, n_salesmans, evidence, clustership, greedy):
-    # initially assign start cities to salesmans
-    # according to assignment utility
-    assignment = [0] * n_salesmans
-    clshsums = list(map(sum, clustership))
-    _unassigned_cities = list(range(1, n))
-    for s in range(1, n_salesmans):
-        if greedy:
-            c_p = _argmax([
-                clustership[assignment[_s]][c]
-                for _s in range(s)
-                for c in _unassigned_cities
-            ]) % s
-        else:
-            pre_s_p = _weighted_choice([
-                clshsums[assignment[_s]]
-                for _s in range(s)
-            ])
-            c_p = _weighted_choice([
-                clustership[assignment[pre_s_p]][c]
-                for c in _unassigned_cities
-            ])
-        c = _unassigned_cities.pop(c_p)
-
-        assignment[s] = c
-    curr_city = assignment[:]
-
-    not_visited = _unassigned_cities
-    proba_paths = [[] for _ in range(n_salesmans)]
-
-    have_many_salesmans = n_salesmans > 1
-    active_salesmans = list(range(n_salesmans))
-    evirows = []
-    for s, pth in enumerate(proba_paths):
-        asmt = assignment[s]
-        if have_many_salesmans:
-            # evirow = [evidence[asmt][c] * clustership[asmt][c] for c in not_visited]
-            evirow = [evidence[asmt][c] for c in not_visited]
-            evirow.append(evidence[asmt][asmt])
-        else:
-            evirow = [evidence[asmt][c] for c in not_visited]
-        evirows.append(evirow)
-
-    if greedy:
-        evisums = None
-    else:
-        evisums = list(map(sum, evirows))
-
+def _make_aco_proba(n, n_salesmans, move_utility, jump_utility, greedy):
+    not_visited = list(range(n))
+    paths = [[0]]
+    not_visited.remove(paths[0][0])
+    jumps_left = n_salesmans - 1
     for _ in range(n-1):
-
+        pth = paths[-1]
+        c = pth[-1]
+        moverow = [move_utility[c][i] for i in not_visited]
+        jumprow = [jump_utility[c][i] for i in not_visited]
+        jump_prob = jumps_left / len(not_visited)
+        move_prob = 1 - jump_prob
         if greedy:
-            s_p, nc_p = _argmax2d(evirows)
+            jnc_p = _argmax(jumprow)
+            mnc_p = _argmax(moverow)
+            jump = jump_prob*jumprow[jnc_p] > move_prob*moverow[mnc_p]
         else:
-            s_p = _weighted_choice(evisums)
-            nc_p = _weighted_choice(evirows[s_p])
+            jnc_p = _weighted_choice(jumprow)
+            mnc_p = _weighted_choice(moverow)
 
-        s = active_salesmans[s_p]
-        pth = proba_paths[s]
-        if nc_p == len(not_visited):
-            assert have_many_salesmans
-            c = assignment[s]
-
-            del active_salesmans[s_p]
-            del evirows[s_p]
-            if evisums:
-                del evisums[s_p]
-
-            if len(active_salesmans) == 1:
-                e = evirows[0].pop(-1)
-                if evisums:
-                    evisums[0] -= e
-                have_many_salesmans = False
-
+            jp = jump_prob * jumprow[jnc_p]
+            mp = move_prob * moverow[mnc_p]
+            jump = _weighted_choice([mp, jp])
+        nc_p = jnc_p if jump else mnc_p
+        nc = not_visited.pop(nc_p)
+        del moverow[nc_p]
+        del jumprow[nc_p]
+        if jump:
+            paths.append([nc])
+            jumps_left -= 1
         else:
-            c = not_visited[nc_p]
-            del not_visited[nc_p]
-
-            for _s_p in range(len(active_salesmans)):
-                if s_p != _s_p:
-                    if evisums:
-                        evisums[_s_p] -= evirows[_s_p][nc_p]
-                    del evirows[_s_p][nc_p]
-            if have_many_salesmans:
-                # evirows[s_p] = [evidence[c][nc] * clustership[c][nc] for nc in not_visited]
-                evirows[s_p] = [evidence[c][nc] for nc in not_visited]
-                evirows[s_p].append(evidence[c][assignment[s]])
-            else:
-                evirows[s_p] = [evidence[c][nc] for nc in not_visited]
-            if evisums:
-                evisums[s_p] = sum(evirows[s_p])
-
-        curr_city[s] = c
-        pth.append(c)
-
-    assert not have_many_salesmans
-    assert len(active_salesmans) == 1
-    assert not_visited == []
-    s = active_salesmans[0]
-    assert not any(assignment[s] in pth for pth in proba_paths)
-    proba_paths[s].append(assignment[s])
-
-    return proba_paths
+            pth.append(nc)
+    assert len(paths) <= n_salesmans
+    return paths
 
 
 def _weighted_choice(weights):
@@ -337,6 +245,18 @@ def _softmax(vector):
     return [e/expsum for e in exps]
 
 
+def _normalize(vector):
+    vsum = sum(vector)
+    return [v/vsum for v in vector]
+
+
+def _path_len(path, distances):
+    d = 0
+    for i in range(len(path)):
+        d += distances[path[i-1]][path[i]]
+    return d
+
+
 class GenerateVisualSvg:
 
     def __init__(self, savedir, coordinates):
@@ -360,14 +280,16 @@ class GenerateVisualSvg:
         else:
             os.makedirs(savedir)
 
-    def __call__(self, walk_utility, cluster_utility, paths):
+    def __call__(self, paths, *utilities):
+        width = 500
         contents = """
         <?xml version="1.0" encoding="utf-8" ?>
-        <svg width="1000" height="500" version="1.1"
+        <svg width="{}" height="{}" version="1.1"
              baseProfile="full" xmlns="http://www.w3.org/2000/svg">
-        """.lstrip()
-        contents += self._render_graph(walk_utility, paths, 0)
-        contents += self._render_graph(cluster_utility, [], 500)
+        """.lstrip().format(len(utilities) * width, width)
+        for i, utility in enumerate(utilities):
+            contents += self._render_graph(utility, paths, i * width)
+            paths = []
         contents += "</svg>"
 
         with open(os.path.join(self.savedir, '{}.svg'.format(self.i)), 'w') as f:
