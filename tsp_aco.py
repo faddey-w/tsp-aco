@@ -104,7 +104,7 @@ def solve_tsp(distances, callback=lambda utility, path: None,
             m_upd = upd
             j_upd = upd / len(proba_paths)
             for k, pth1 in enumerate(proba_paths):
-                if lengths[k] == max_length:
+                if lengths[k] == max_length and n_salesmans > 1:
                     continue
                 for i in range(len(pth1)):
                     c1, c2 = pth1[i-1], pth1[i]
