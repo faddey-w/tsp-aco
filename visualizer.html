@@ -5,13 +5,22 @@
     <title>Title</title>
 </head>
 <body>
-    <img id="image" src="./frames/0.svg" width="200" height="200"/>
+    <img id="image" src="./frames/0.svg" width="400" height="200"/>
     <div>
         <button id="btnprev">prev</button>
         <button id="btnnext">next</button>
     </div>
 
     <script type="text/javascript">
+
+        var hash = document.location.hash;
+        if (!!hash) {
+            hash = hash.substring(1);
+            var src = window.image.src;
+            var idx = src.lastIndexOf('/');
+            window.image.src = src.substring(0, idx) + '/' + hash + src.substring(idx);
+        }
+
         var i = 0;
 
         function loadAnother() {

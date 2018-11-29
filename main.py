@@ -1,6 +1,8 @@
 import argparse
 import csv
 import sys
+import pathlib
+import webbrowser
 import tsp_aco
 
 
@@ -20,10 +22,11 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--file', '-F', default='worldcitiespop-part1.txt')
     parser.add_argument('--country', '-C', default='hu')
-    parser.add_argument('-n', type=int, default=5)
+    parser.add_argument('-n', type=int, default=20)
+    parser.add_argument('-m', type=int, default=2)
     parser.add_argument('--out', '-O')
     parser.add_argument('--format', '-f', choices=['readable', 'csv', 'numpy'], default='csv')
-    parser.add_argument('--tsp', action='store_true')
+    parser.add_argument('--show', '-S', action='store_true')
     opts = parser.parse_args()
 
     heading, rows = readfile(opts.file, opts.country)
@@ -45,10 +48,10 @@ def main():
         for i1 in range(len(cities))
     ]
 
-    if opts.out:
-        out = open(opts.out, 'w')
-    elif opts.out == '-':
+    if opts.out == '-':
         out = sys.stdout
+    elif opts.out:
+        out = open(opts.out, 'w')
     else:
         out = None
     if out is not None:
@@ -69,11 +72,16 @@ def main():
         callback=tsp_aco.GenerateVisualSvg('frames', coordinates),
         herdness=2.0,
         greedness=1.0,
-        evaporation=0.005,
-        utility_scale=1,
-        max_iteration=opts.n * 5,
-        n_probes=opts.n,
+        evaporation=0.2,
+        max_iteration=int(opts.n ** 1.5),
+        n_probas=int(opts.n ** 1.5) * opts.m,
+        n_salesmans=opts.m,
+        objective='max',
     )
+
+    if opts.show:
+        url = pathlib.Path(__file__).absolute().parent.joinpath('visualizer.html').as_uri()
+        webbrowser.open(url)
 
 
 def print_readable(out, names, distmap):
