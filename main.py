@@ -45,6 +45,7 @@ def main(argv=None):
     lat = [float(r[5]) for r in cities]
     lon = [float(r[6]) for r in cities]
     coordinates = list(zip(lat, lon))
+    city_names = [c[1] for c in cities]
 
     distmat = [
         [
@@ -78,7 +79,7 @@ def main(argv=None):
         n_probas=opts.n_probas or int(opts.n * math.log(opts.n)) * opts.m,
         features=opts.features.split(','),
     )
-    tsp_aco.solve_tsp(
+    best_paths = tsp_aco.solve_tsp(
         distances=distmat,
         callback=tsp_aco.GenerateVisualSvg("frames", coordinates),
         max_iteration=opts.iterations or int(opts.n * math.log(opts.n)),
@@ -86,6 +87,9 @@ def main(argv=None):
         objective="max",
         heuristic=heuristic,
     )
+    for path in best_paths:
+        cost = tsp_aco.path_len(path, distmat)
+        print(cost, "::", " -> ".join(city_names[i] for i in path))
 
     if opts.show:
         url = (
@@ -120,6 +124,6 @@ def print_numpy(out, names, distmap):
     numpy.savetxt(out, distmap)
 
 
-# main('-F test.csv -n 9 -m 3 -p 1 -I 100'.split())
+# main('-n 10 -m 1 -p 20 -I 100'.split())
 if __name__ == "__main__":
     main()

@@ -66,7 +66,7 @@ class Heuristic:
         ]
 
     def add_path(self, paths, cost):
-        lengths = [_path_len(p, self.distances) for p in paths]
+        lengths = [path_len(p, self.distances) for p in paths]
         max_length = max(lengths)
         jump_utility_update = self._jump_utility_update
         move_utility_update = self._move_utility_update
@@ -200,7 +200,7 @@ def solve_tsp(
 
 
 def _get_proba_cost(proba_paths, distances):
-    lengths = [_path_len(p, distances) for p in proba_paths]
+    lengths = [path_len(p, distances) for p in proba_paths]
     return max(lengths)
 
 
@@ -285,7 +285,7 @@ def _shift_to_positive(matrix):
     return [[x - minval for x in row] for row in matrix]
 
 
-def _path_len(path, distances):
+def path_len(path, distances):
     d = 0
     for i in range(len(path)):
         d += distances[path[i - 1]][path[i]]
