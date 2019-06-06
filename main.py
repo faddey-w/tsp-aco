@@ -70,7 +70,7 @@ def main(argv=None):
         if opts.out != "-":
             out.close()
 
-    heuristic = tsp_aco.Heuristic(
+    heuristic = tsp_aco.HeuristicV1(
         distances=distmat,
         n_salesmans=opts.m,
         herdness=0.5,
@@ -83,8 +83,6 @@ def main(argv=None):
         distances=distmat,
         callback=tsp_aco.GenerateVisualSvg("frames", coordinates),
         max_iteration=opts.iterations or int(opts.n * math.log(opts.n)),
-        n_salesmans=opts.m,
-        objective="max",
         heuristic=heuristic,
     )
     for path in best_paths:

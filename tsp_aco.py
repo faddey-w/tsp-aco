@@ -13,23 +13,42 @@ DECOUPLE_LONGEST_BY_MOVE = False
 
 
 class Heuristic:
+    def __init__(self, distances, n_salesmans, n_probas=None):
+        self.distances = distances
+        self.n_salesmans = n_salesmans
+        self.n = len(distances)
+        self.n_probas = n_probas or self.n
+
+    def get_utilities(self):
+        return ()
+
+    def add_solution(self, paths, cost):
+        pass
+
+    def update(self):
+        pass
+
+    def __call__(self, path, to_nodes, n_paths):
+        n = len(to_nodes)
+        return [1 / (2 * n)] * n, [1 / (2 * n)] * n
+
+
+class HeuristicV1(Heuristic):
     def __init__(
         self,
         distances,
         n_salesmans,
+        n_probas=None,
         greedness=1,
         herdness=1,
         evaporation=0.1,
-        n_probas=None,
         features=(),
     ):
-        self.distances = distances
-        self.n_salesmans = n_salesmans
-        self.n = n = len(distances)
-        self.n_probas = n_probas or n
+        super(HeuristicV1, self).__init__(distances, n_salesmans, n_probas)
+        n = self.n
         self.herdness = herdness
         self.evaporation = evaporation
-        self.use_jump_balancing = 'JUMP_BALANCING' in features
+        self.use_jump_balancing = "JUMP_BALANCING" in features
         mean_d = sum(map(sum, distances)) / (n * n)
         self.move_heuristic = [
             _normalize([(1 / d) ** greedness if d else 0 for d in row])
@@ -66,6 +85,11 @@ class Heuristic:
         ]
 
     def add_path(self, paths, cost):
+        lengths = [path_len(p, self.distances) for p in paths]
+    def get_utilities(self):
+        return self.move_utility, self.jump_utility
+
+    def add_solution(self, paths, cost):
         lengths = [path_len(p, self.distances) for p in paths]
         max_length = max(lengths)
         jump_utility_update = self._jump_utility_update
@@ -137,29 +161,126 @@ class Heuristic:
         self._update_evidences()
         self._reset_update_buffers()
 
-    def get_move_probs(self, from_node, to_nodes, jumps_left):
+    def __call__(self, path, to_nodes, n_paths):
+        from_node = path[-1]
+        jumps_left = self.n_salesmans - n_paths
         move_utility = self._move_evidence
         jump_utility = self._jump_evidence
-        moverow = [move_utility[from_node][i] for i in to_nodes]
-        jumprow = [jump_utility[from_node][i] for i in to_nodes]
         if self.use_jump_balancing:
             jump_prob = jumps_left / len(to_nodes)
             move_prob = 1 - jump_prob
         else:
             jump_prob = 1 if jumps_left > 0 else 0
             move_prob = 1 if jumps_left > len(to_nodes) else 0
-        return (move_prob, moverow), (jump_prob, jumprow)
+        moverow = [move_utility[from_node][i] for i in to_nodes]
+        jumprow = [jump_utility[from_node][i] for i in to_nodes]
+        total = sum(moverow) + sum(jumprow)
+        moveprobs = [move_prob * m / total for m in moverow]
+        jumpprobs = [jump_prob * j / total for j in jumprow]
+        return moveprobs, jumpprobs
+
+
+class HeuristicV2(Heuristic):
+    def __init__(
+        self,
+        distances,
+        n_salesmans,
+        n_probas=None,
+        greedness=1,
+        herdness=1,
+        evaporation=0.1,
+    ):
+        super(HeuristicV2, self).__init__(distances, n_salesmans, n_probas)
+        n = self.n
+        self.herdness = herdness
+        self.evaporation = evaporation
+        mean_d = sum(map(sum, distances)) / (n * n)
+        self.move_heuristic = [
+            [(1 / d) ** greedness if d else 1 for d in row] for row in distances
+        ]
+        self._move_utility = [[1 / (n * mean_d)] * n for _ in range(n)]
+        self._clusterity = [[1 / (n * mean_d)] * n for _ in range(n)]
+        self._reset_update_buffers()
+
+    def _reset_update_buffers(self):
+        n = self.n
+        self._move_utility_update = [[0] * n for _ in range(n)]
+        self._clusterity_update = [[0] * n for _ in range(n)]
+
+    def get_utilities(self):
+        return self._move_utility, self._clusterity
+
+    def add_solution(self, paths, cost):
+        lengths = [path_len(p, self.distances) for p in paths]
+        clusterity_update = self._clusterity_update
+        move_utility_update = self._move_utility_update
+
+        # commit to pheromone update buffer
+
+        for pth_cost, pth in zip(lengths, paths):
+            upd = (1 / (cost + pth_cost)) / self.n_probas
+            m_upd = upd
+            c_upd = upd
+            for i in range(len(pth)):
+                c1, c2 = pth[i - 1], pth[i]
+                move_utility_update[c2][c1] += m_upd
+                move_utility_update[c1][c2] += m_upd
+            for i, c1 in enumerate(pth):
+                for j in range(i + 1, len(pth)):
+                    c2 = pth[j]
+                    clusterity_update[c1][c2] += c_upd
+                    clusterity_update[c2][c1] += c_upd
+
+        return cost
+
+    def update(self):
+        n = self.n
+        evaporation = self.evaporation
+        move_utility = self._move_utility
+        move_utility_update = self._move_utility_update
+        clusterity = self._clusterity
+        clusterity_update = self._clusterity_update
+
+        leave = 1 - evaporation
+        add = 1
+        for i in range(n):
+            for j in range(n):
+                move_utility[i][j] = (
+                    leave * move_utility[i][j] + add * move_utility_update[i][j]
+                )
+                clusterity[i][j] = (
+                    leave * clusterity[i][j] + add * clusterity_update[i][j]
+                )
+
+        self._reset_update_buffers()
+
+    def __call__(self, path, to_nodes, n_paths):
+        jump_prob = (self.n_salesmans - n_paths) / len(to_nodes)
+        move_prob = 1 - jump_prob
+        from_node = path[-1]
+        start_node = path[0]
+        u = self._move_utility[from_node]
+        a = self.herdness
+        h = self.move_heuristic[from_node]
+        c = self._clusterity[from_node]
+        move_values = [move_prob * (u[i] ** a) * h[i] * c[i] for i in to_nodes]
+        jump_value = jump_prob * (u[start_node] ** a) * h[start_node] * c[start_node]
+        total = sum(move_values) + sum(jump_value)
+        moveprobs = [m / total for m in move_values]
+        jumpprobs = [jump_value / len(to_nodes) / total] * len(to_nodes)
+        assert abs(sum(moveprobs) + sum(jumpprobs) - 1) <= 0.00001
+        return moveprobs, jumpprobs
 
 
 def solve_tsp(
     distances,
     heuristic: Heuristic,
-    callback=lambda paths, *utilities, **costs: None,
+    callback=None,
     max_iteration=10,
-    n_salesmans=1,
-    objective="max",
     _debug=False,
 ):
+    if callback is None:
+        callback = lambda paths, *utilities, **costs: None
     if _debug > 0:
         _debug -= 1
     n = len(distances)
@@ -167,36 +288,36 @@ def solve_tsp(
         "if there are no less salesmans than cities, "
         "you do not need to force them to travel"
     )
-    assert objective in ("max", "total")
-    assert JUMP_PHEROMONE in ("naive", "heuristical")
 
-    best_paths = _make_aco_proba(n, n_salesmans, heuristic, greedy=True)
+    best_paths = _make_aco_proba(n, heuristic, greedy=True)
+    assert len(best_paths) == heuristic.n_salesmans
     best_cost = _get_proba_cost(best_paths, heuristic.distances)
-    callback(best_paths, heuristic.move_utility, L=best_cost)
+    callback(best_paths, *heuristic.get_utilities(), L=best_cost)
 
     for _ in range(max_iteration):
         for _ in range(heuristic.n_probas):
-            proba_paths = _make_aco_proba(n, n_salesmans, heuristic, greedy=False)
+            proba_paths = _make_aco_proba(n, heuristic, greedy=False)
             cost = _get_proba_cost(proba_paths, heuristic.distances)
             if cost < best_cost:
                 best_cost = cost
                 best_paths = proba_paths
-            heuristic.add_path(proba_paths, cost)
+            heuristic.add_solution(proba_paths, cost)
 
         heuristic.update()
 
         # at each iteration we greedily compute current best solution
         # so callback can see the progress
-        greedy_paths = _make_aco_proba(n, n_salesmans, heuristic, greedy=True)
+        greedy_paths = _make_aco_proba(n, heuristic, greedy=True)
+        assert len(greedy_paths) == heuristic.n_salesmans
         cost = _get_proba_cost(greedy_paths, heuristic.distances)
         if cost < best_cost:
             best_paths = greedy_paths
             best_cost = cost
-        callback(greedy_paths, heuristic.move_utility, L=cost)
+        callback(greedy_paths, *heuristic.get_utilities(), L=cost)
 
-    callback(best_paths, heuristic.move_utility, L=best_cost)
+    callback(best_paths, *heuristic.get_utilities(), L=best_cost)
 
-    return best_paths
+    return best_cost, best_paths
 
 
 def _get_proba_cost(proba_paths, distances):
@@ -212,48 +333,44 @@ def _format2d(matrix):
     return "\n".join(map(_format1d, matrix))
 
 
-def _make_aco_proba(n, n_salesmans, heuristic, greedy):
+def _make_aco_proba(n, heuristic, greedy):
     not_visited = list(range(n))
     paths = [[0]]
     not_visited.remove(paths[0][0])
-    jumps_left = n_salesmans - 1
     for _ in range(n - 1):
         pth = paths[-1]
-        c = pth[-1]
-        (move_prob, moverow), (jump_prob, jumprow) = heuristic.get_move_probs(
-            c, not_visited, jumps_left
-        )
+        moveprobs, jumpprobs = heuristic(pth, not_visited, len(paths))
         if greedy:
-            jnc_p = _argmax(jumprow)
-            mnc_p = _argmax(moverow)
-            jump = jump_prob * jumprow[jnc_p] > move_prob * moverow[mnc_p]
+            jnc_p = _argmax(jumpprobs)
+            mnc_p = _argmax(moveprobs)
+            jump = jumpprobs[jnc_p] > moveprobs[mnc_p]
+            nc_p = jnc_p if jump else mnc_p
         else:
-            jnc_p = _weighted_choice(jumprow)
-            mnc_p = _weighted_choice(moverow)
-
-            jp = jump_prob * jumprow[jnc_p]
-            mp = move_prob * moverow[mnc_p]
-            jump = _weighted_choice([mp, jp])
-        nc_p = jnc_p if jump else mnc_p
+            nc_p = _weighted_choice(moveprobs + jumpprobs, wsum=1)
+            if nc_p < len(not_visited):
+                jump = False
+            else:
+                jump = True
+                nc_p -= len(not_visited)
         nc = not_visited.pop(nc_p)
         if jump:
             paths.append([nc])
-            jumps_left -= 1
         else:
             pth.append(nc)
-    assert len(paths) == n_salesmans
     return paths
 
 
-def _weighted_choice(weights):
-    wsum = sum(weights)
+def _weighted_choice(weights, wsum=None):
+    if wsum is None:
+        wsum = sum(weights)
     threshold = random.random() * wsum
     wacc = 0
     for i, w in enumerate(weights):
         wacc += w
         if wacc >= threshold:
             return i
-    return 0
+    # return 0
+    raise RuntimeError(weights)
 
 
 def _argmax2d(matrix):
