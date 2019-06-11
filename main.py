@@ -5,17 +5,7 @@ import pathlib
 import math
 import webbrowser
 import tsp_aco
-
-
-def readfile(path, country=None):
-    with open(path, encoding="ISO-8859-1") as f:
-        if country is None:
-            iterlines = f
-        else:
-            iterlines = (l for i, l in enumerate(f) if l.startswith(country) or i == 0)
-        rows = list(csv.reader(iterlines))
-    heading = rows.pop(0)
-    return heading, rows
+from graph import parse_graph_from_file
 
 
 def main(argv=None):
@@ -27,7 +17,7 @@ def main(argv=None):
     parser.add_argument("-m", type=int, default=2)
     parser.add_argument("--iterations", "-I", type=int)
     parser.add_argument("--n-probas", "-p", type=int)
-    parser.add_argument("--features", default='')
+    parser.add_argument("--features", default="")
     parser.add_argument("--out", "-O")
     parser.add_argument(
         "--format", "-f", choices=["readable", "csv", "numpy"], default="csv"
@@ -35,25 +25,9 @@ def main(argv=None):
     parser.add_argument("--show", "-S", action="store_true")
     opts = parser.parse_args(argv)
 
-    heading, rows = readfile(opts.file, opts.country)
-    # heading = Country, City, AccentCity, Region, Population, Lat, Lon
-    #           0        1     2           3       4           5    6
-    populations = [int(r[4] or 0) for r in rows]
-    top_pop_idx = sorted(range(len(rows)), key=populations.__getitem__, reverse=True)
-
-    cities = [rows[i] for i in top_pop_idx[: opts.n]]
-    lat = [float(r[5]) for r in cities]
-    lon = [float(r[6]) for r in cities]
-    coordinates = list(zip(lat, lon))
-    city_names = [c[1] for c in cities]
-
-    distmat = [
-        [
-            ((lat[i1] - lat[i2]) ** 2 + (lon[i1] - lon[i2]) ** 2) ** 0.5
-            for i2 in range(len(cities))
-        ]
-        for i1 in range(len(cities))
-    ]
+    city_names, coordinates, distmat = parse_graph_from_file(
+        opts.file, opts.country, opts.n
+    )
 
     if opts.out == "-":
         out = sys.stdout
@@ -62,10 +36,8 @@ def main(argv=None):
     else:
         out = None
     if out is not None:
-        names = [r[2] for r in cities]
-
         printers = {"readable": print_readable, "csv": print_csv, "numpy": print_numpy}
-        printers[opts.format](out, names, distmat)
+        printers[opts.format](out, city_names, distmat)
 
         if opts.out != "-":
             out.close()
@@ -77,7 +49,7 @@ def main(argv=None):
         greedness=0.5,
         evaporation=0.01,
         n_probas=opts.n_probas or int(opts.n * math.log(opts.n)) * opts.m,
-        features=opts.features.split(','),
+        features=opts.features.split(","),
     )
     best_paths = tsp_aco.solve_tsp(
         distances=distmat,
