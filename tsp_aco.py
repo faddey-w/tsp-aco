@@ -315,7 +315,7 @@ def solve_tsp(
             best_cost = cost
         callback(greedy_paths, *heuristic.get_utilities(), L=cost)
 
-    callback(best_paths, *heuristic.get_utilities(), L=best_cost)
+    callback(best_paths, *heuristic.get_utilities(), L=best_cost, is_last=True)
 
     return best_cost, best_paths
 
@@ -425,7 +425,7 @@ class GenerateVisualSvg:
         self.xrange = maxx - minx
         self.yoffs = miny
         self.yrange = maxy - miny
-        self.i = 0
+        self.i = 1
 
         if os.path.exists(savedir):
             for fname in os.listdir(savedir):
@@ -435,7 +435,7 @@ class GenerateVisualSvg:
         else:
             os.makedirs(savedir)
 
-    def __call__(self, paths, *utilities, **costs):
+    def __call__(self, paths, *utilities, is_last=False, **costs):
         width = self._width + 10
         contents = """
         <?xml version="1.0" encoding="utf-8" ?>
@@ -461,6 +461,9 @@ class GenerateVisualSvg:
 
         with open(os.path.join(self.savedir, "{}.svg".format(self.i)), "w") as f:
             f.write(contents)
+        if is_last:
+            with open(os.path.join(self.savedir, "0.svg"), "w") as f:
+                f.write(contents)
         self.i += 1
 
     def _render_graph(self, edge_weights, highlighted_paths, x_offset):
@@ -473,15 +476,21 @@ class GenerateVisualSvg:
         w = self._width
         th = self._text_height
 
+        black_lines = []
+        red_lines = []
         n = len(edge_weights)
         for i in range(n):
             for j in range(i):
                 if (i, j) in pathpairs or (j, i) in pathpairs:
                     color = 255, 0, 0
                     minw = 1
+                    add_w = 1
+                    line_list = red_lines
                 else:
                     color = 0, 0, 0
                     minw = 0.01
+                    add_w = 0
+                    line_list = black_lines
 
                 line = """
                 <line x1="{}" y1="{}" x2="{}" y2="{}" stroke-width="{}" stroke="rgb({})"/>
@@ -490,8 +499,20 @@ class GenerateVisualSvg:
                     th + w * (self.coordinates[i][1] - self.yoffs) / self.yrange,
                     x_offset + w * (self.coordinates[j][0] - self.xoffs) / self.xrange,
                     th + w * (self.coordinates[j][1] - self.yoffs) / self.yrange,
-                    max(minw, 3 * edge_weights[i][j] / max_utility),
+                    max(minw, add_w + 3 * edge_weights[i][j] / max_utility),
                     ",".join(map(str, color)),
                 )
-                contents += line
+                line_list.append(line)
+        contents += "".join(black_lines)
+        contents += "".join(red_lines)
+
+        for i in range(n):
+            point = """
+            <circle cx="{}" cy="{}" r="2" stroke-width="2" stroke="rgb(0, 255, 0)"/>
+            """.format(
+                x_offset + w * (self.coordinates[i][0] - self.xoffs) / self.xrange,
+                th + w * (self.coordinates[i][1] - self.yoffs) / self.yrange,
+            )
+            contents += point
+
         return contents
