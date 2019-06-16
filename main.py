@@ -51,15 +51,16 @@ def main(argv=None):
         n_probas=opts.n_probas or int(opts.n * math.log(opts.n)) * opts.m,
         features=opts.features.split(","),
     )
-    best_paths = tsp_aco.solve_tsp(
+    best_cost, best_paths = tsp_aco.solve_tsp(
         distances=distmat,
         callback=tsp_aco.GenerateVisualSvg("frames", coordinates),
         max_iteration=opts.iterations or int(opts.n * math.log(opts.n)),
         heuristic=heuristic,
     )
+    # distmat_norm = sum(map(sum, distmat)) / (len(distmat) ** 2)
     for path in best_paths:
-        cost = tsp_aco.path_len(path, distmat)
-        print(cost, "::", " -> ".join(city_names[i] for i in path))
+        cost = tsp_aco.path_len(path, distmat) #/ distmat_norm
+        print(f"{cost:.4f}:: {' -> '.join(city_names[i] for i in path)}")
 
     if opts.show:
         url = (

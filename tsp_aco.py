@@ -84,8 +84,6 @@ class HeuristicV1(Heuristic):
             for i in range(n)
         ]
 
-    def add_path(self, paths, cost):
-        lengths = [path_len(p, self.distances) for p in paths]
     def get_utilities(self):
         return self.move_utility, self.jump_utility
 
@@ -170,13 +168,20 @@ class HeuristicV1(Heuristic):
             jump_prob = jumps_left / len(to_nodes)
             move_prob = 1 - jump_prob
         else:
-            jump_prob = 1 if jumps_left > 0 else 0
-            move_prob = 1 if jumps_left > len(to_nodes) else 0
+            if jumps_left >= len(to_nodes):
+                jump_prob = 1
+                move_prob = 0
+            elif jumps_left > 0:
+                jump_prob = move_prob = 1
+            else:
+                jump_prob = 0
+                move_prob = 1
         moverow = [move_utility[from_node][i] for i in to_nodes]
         jumprow = [jump_utility[from_node][i] for i in to_nodes]
-        total = sum(moverow) + sum(jumprow)
+        total = move_prob * sum(moverow) + jump_prob * sum(jumprow)
         moveprobs = [move_prob * m / total for m in moverow]
         jumpprobs = [jump_prob * j / total for j in jumprow]
+        assert abs(sum(moveprobs) + sum(jumpprobs) - 1) < 1e-5
         return moveprobs, jumpprobs
 
 
@@ -273,11 +278,7 @@ class HeuristicV2(Heuristic):
 
 
 def solve_tsp(
-    distances,
-    heuristic: Heuristic,
-    callback=None,
-    max_iteration=10,
-    _debug=False,
+    distances, heuristic: Heuristic, callback=None, max_iteration=10, _debug=False
 ):
     if callback is None:
         callback = lambda paths, *utilities, **costs: None
@@ -323,14 +324,6 @@ def solve_tsp(
 def _get_proba_cost(proba_paths, distances):
     lengths = [path_len(p, distances) for p in proba_paths]
     return max(lengths)
-
-
-def _format1d(vector):
-    return "[" + ", ".join("{:.3f}".format(v) for v in vector) + "]"
-
-
-def _format2d(matrix):
-    return "\n".join(map(_format1d, matrix))
 
 
 def _make_aco_proba(n, heuristic, greedy):
