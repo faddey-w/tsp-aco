@@ -437,7 +437,10 @@ class GenerateVisualSvg:
         """.lstrip().format(
             len(utilities) * width, width + self._text_height
         )
-        contents += "<style>.txt {font: bold 26px sans-serif;}</style>"
+        contents += """<style>
+            .txt {font: bold 15px sans-serif;} 
+            .lbl {font: bold 9px sans-serif; text-anchor: middle;}
+        </style>"""
 
         costs_text = "; ".join(
             "{}={:2f}".format(key, val) for key, val in costs.items()
@@ -500,12 +503,12 @@ class GenerateVisualSvg:
         contents += "".join(red_lines)
 
         for i in range(n):
-            point = """
-            <circle cx="{}" cy="{}" r="2" stroke-width="2" stroke="rgb(0, 255, 0)"/>
-            """.format(
-                x_offset + w * (self.coordinates[i][0] - self.xoffs) / self.xrange,
-                th + w * (self.coordinates[i][1] - self.yoffs) / self.yrange,
-            )
+            x = x_offset + w * (self.coordinates[i][0] - self.xoffs) / self.xrange
+            y = th + w * (self.coordinates[i][1] - self.yoffs) / self.yrange
+            point = f"""
+            <circle cx="{x}" cy="{y}" r="5" fill="rgb(0, 255, 0)"/>
+            <text x="{x}" y="{y+3.5}" class="lbl">{i}</text>
+            """
             contents += point
 
         return contents
