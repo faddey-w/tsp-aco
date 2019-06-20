@@ -42,6 +42,7 @@ class HeuristicV1(Heuristic):
         greedness=1,
         herdness=1,
         evaporation=0.1,
+        pheromone_update_scale=1,
         features=(),
     ):
         super(HeuristicV1, self).__init__(distances, n_salesmans, n_probas)
@@ -54,16 +55,23 @@ class HeuristicV1(Heuristic):
             _normalize([(1 / d) ** greedness if d else 0 for d in row])
             for row in distances
         ]
+        self.pheromone_update_scale = pheromone_update_scale
         self.move_utility = [[1 / (n * mean_d)] * n for _ in range(n)]
         self.jump_utility = [[1 / (n * mean_d)] * n for _ in range(n)]
         self.jump_heuristic = [
-            [1 / (n - 1) for d in row] for i, row in enumerate(distances)
+            _normalize([d ** 0.01 if d else 0 for d in row])
+            for row in distances
+            # [1 / (n - 1) for d in row] for i, row in enumerate(distances)
         ]
+        self._move_utility_update = None
+        self._jump_utility_update = None
         self._reset_update_buffers()
         self._update_evidences()
+        self._last_update_buffers = None
 
     def _reset_update_buffers(self):
         n = self.n
+        self._last_update_buffers = self._move_utility_update, self._jump_utility_update
         self._move_utility_update = [[0] * n for _ in range(n)]
         self._jump_utility_update = [[0] * n for _ in range(n)]
 
@@ -85,7 +93,21 @@ class HeuristicV1(Heuristic):
         ]
 
     def get_utilities(self):
-        return self.move_utility, self.jump_utility
+        # if self._last_update_buffers is None:
+        #     return self.move_utility, self.jump_utility
+        # else:
+        #     return self._last_update_buffers
+        n = self.n
+        result1 = [[0] * n for _ in range(n)]
+        result2 = [[0] * n for _ in range(n)]
+        for i in range(n):
+            all_rest = list(range(n))
+            del all_rest[i]
+            moveprobs, jumpprobs = self([i], all_rest, self.n_salesmans-1)
+            for j, mp, jp in zip(all_rest, moveprobs, jumpprobs):
+                result1[i][j] = mp + jp
+                result2[i][j] = jp
+        return result1, result2
 
     def add_solution(self, paths, cost):
         lengths = [path_len(p, self.distances) for p in paths]
@@ -95,7 +117,7 @@ class HeuristicV1(Heuristic):
 
         # commit to pheromone update buffer
 
-        upd = (1 / cost) / self.n_probas
+        upd = (self.pheromone_update_scale / cost) / self.n_probas
         m_upd = upd
         j_upd = upd
         if USE_JUMP_PHEROMONE_DOWNSCALE:
@@ -107,6 +129,8 @@ class HeuristicV1(Heuristic):
                         jump_utility_update[c1][c2] += j_upd
                         jump_utility_update[c2][c1] += j_upd
             elif JUMP_PHEROMONE == "naive":
+                if k == 0:
+                    continue
                 c1 = pth1[0]
                 c2 = paths[k - 1][-1]
                 jump_utility_update[c1][c2] += j_upd
@@ -123,6 +147,8 @@ class HeuristicV1(Heuristic):
                 if DECOUPLE_LONGEST_BY_MOVE:
                     continue
             for i in range(len(pth1)):
+                if i == 0:
+                    continue
                 c1, c2 = pth1[i - 1], pth1[i]
                 move_utility_update[c2][c1] += m_upd
                 move_utility_update[c1][c2] += m_upd
@@ -151,10 +177,10 @@ class HeuristicV1(Heuristic):
                 move_utility[i][j] = (1 - evaporation) * move_utility[i][
                     j
                 ] + evaporation * move_utility_update[i][j]
-                min_ju = min(map(min, jump_utility_update))
+                min_ju = 0# min(map(min, jump_utility_update))
                 jump_utility[i][j] = (1 - evaporation) * jump_utility[i][
                     j
-                ] + evaporation * (jump_utility_update[i][j] - min_ju)
+                ] + (jump_utility_update[i][j] - min_ju)
 
         self._update_evidences()
         self._reset_update_buffers()
@@ -190,10 +216,10 @@ class HeuristicV2(Heuristic):
         self,
         distances,
         n_salesmans,
-        n_probas=None,
-        greedness=1,
-        herdness=1,
-        evaporation=0.1,
+        herdness=0.5,
+        greedness=0.5,
+        evaporation=0.01,
+        n_probas=int(30 * math.log(30)) * 3,
     ):
         super(HeuristicV2, self).__init__(distances, n_salesmans, n_probas)
         n = self.n
@@ -480,7 +506,7 @@ class GenerateVisualSvg:
                 if (i, j) in pathpairs or (j, i) in pathpairs:
                     color = 255, 0, 0
                     minw = 1
-                    add_w = 1
+                    add_w = 0
                     line_list = red_lines
                 else:
                     color = 0, 0, 0

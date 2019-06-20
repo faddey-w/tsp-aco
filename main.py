@@ -45,22 +45,27 @@ def main(argv=None):
     heuristic = tsp_aco.HeuristicV1(
         distances=distmat,
         n_salesmans=opts.m,
-        herdness=0.5,
-        greedness=0.5,
-        evaporation=0.01,
-        n_probas=opts.n_probas or int(opts.n * math.log(opts.n)) * opts.m,
-        features=opts.features.split(","),
+        herdness=3,
+        greedness=1,
+        evaporation=0.1,
+        n_probas=100,
+        features=[],
+        pheromone_update_scale=1,
     )
+    # heuristic = tsp_aco.HeuristicV2(
+    #     distances=distmat,
+    #     n_salesmans=opts.m,
+    # )
     best_cost, best_paths = tsp_aco.solve_tsp(
         distances=distmat,
         callback=tsp_aco.GenerateVisualSvg("frames", coordinates),
-        max_iteration=opts.iterations or int(opts.n * math.log(opts.n)),
+        max_iteration=5,
         heuristic=heuristic,
     )
     # distmat_norm = sum(map(sum, distmat)) / (len(distmat) ** 2)
     for path in best_paths:
         cost = tsp_aco.path_len(path, distmat) #/ distmat_norm
-        print(f"{cost:.4f}:: {' -> '.join(city_names[i] for i in path)}")
+        print(f"{cost:.4f}:: {' -> '.join(str(i) for i in path)}")
 
     if opts.show:
         url = (
@@ -95,6 +100,11 @@ def print_numpy(out, names, distmap):
     numpy.savetxt(out, distmap)
 
 
-# main('-n 10 -m 1 -p 20 -I 100'.split())
-if __name__ == "__main__":
-    main()
+main(
+    "-C x -F graphs/1-30,gauss,1.csv "
+    "-n 30 -m 3 -p 1000 -I 5 "
+    # "--features JUMP_BALANCING"
+    "".split()
+)
+# if __name__ == "__main__":
+#     main()
