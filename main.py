@@ -3,6 +3,7 @@ import csv
 import sys
 import pathlib
 import math
+import os
 import webbrowser
 import tsp_aco
 from graph import parse_graph_from_file
@@ -42,24 +43,34 @@ def main(argv=None):
         if opts.out != "-":
             out.close()
 
-    heuristic = tsp_aco.HeuristicV1(
-        distances=distmat,
-        n_salesmans=opts.m,
-        herdness=3,
-        greedness=1,
-        evaporation=0.1,
-        n_probas=100,
-        features=[],
-        pheromone_update_scale=1,
-    )
-    # heuristic = tsp_aco.HeuristicV2(
+    graph_name = os.path.split(opts.file)[1].rpartition(".")[0]
+
+    # heuristic = tsp_aco.HeuristicV1(
     #     distances=distmat,
     #     n_salesmans=opts.m,
+    #     herdness=0.5,
+    #     greedness=0.5,
+    #     evaporation=0.001,
+    #     n_probas=1000,
+    #     use_jump_balancing=True,
+    #     pheromone_update_scale=1,
     # )
+    heuristic = tsp_aco.HeuristicV2(
+        distances=distmat,
+        n_salesmans=opts.m,
+        herdness=0.5,
+        greedness=1,
+        evaporation=0.001,
+        # n_probas=int(opts.n * math.log(opts.n)) * opts.m,
+        n_probas=2000,
+        pheromone_update_scale=0.0001,
+        use_jump_balancing=False,
+    )
     best_cost, best_paths = tsp_aco.solve_tsp(
         distances=distmat,
-        callback=tsp_aco.GenerateVisualSvg("frames", coordinates),
-        max_iteration=5,
+        callback=tsp_aco.GenerateVisualSvg(f"frames/test", coordinates),
+        # callback=tsp_aco.GenerateVisualSvg(f"frames/v2_{graph_name}", coordinates),
+        max_iteration=20,
         heuristic=heuristic,
     )
     # distmat_norm = sum(map(sum, distmat)) / (len(distmat) ** 2)

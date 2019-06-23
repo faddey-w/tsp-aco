@@ -93,11 +93,11 @@ def name_generator():
         i += 1
 
 
-def main():
+def main(argv=None):
     parser = argparse.ArgumentParser()
     parser.add_argument("params", nargs="+")
     parser.add_argument("--seed", "-s", type=int)
-    opts = parser.parse_args()
+    opts = parser.parse_args(argv)
     params_encoded = opts.params
     if opts.seed is None:
         opts.seed = hash(time.time())
