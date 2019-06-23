@@ -58,19 +58,19 @@ def main(argv=None):
     heuristic = tsp_aco.HeuristicV2(
         distances=distmat,
         n_salesmans=opts.m,
-        herdness=0.5,
-        greedness=1,
-        evaporation=0.01,
+        herdness=1,
+        greedness=2,
+        evaporation=0.001,
         # n_probas=int(opts.n * math.log(opts.n)) * opts.m,
-        n_probas=2000,
+        n_probas=100,
         pheromone_update_scale=0.0001,
         use_jump_balancing=False,
     )
     best_cost, best_paths = tsp_aco.solve_tsp(
         distances=distmat,
-        callback=tsp_aco.GenerateVisualSvg(f"frames/test", coordinates),
-        # callback=tsp_aco.GenerateVisualSvg(f"frames/v2_{graph_name}", coordinates),
-        max_iteration=20,
+        # callback=tsp_aco.GenerateVisualSvg(f"frames/test", coordinates),
+        callback=tsp_aco.GenerateVisualSvg(f"frames/v2_{graph_name}", coordinates),
+        max_iteration=500,
         heuristic=heuristic,
     )
     # distmat_norm = sum(map(sum, distmat)) / (len(distmat) ** 2)

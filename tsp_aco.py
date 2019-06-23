@@ -254,7 +254,8 @@ class HeuristicV2(Heuristic):
         # commit to pheromone update buffer
 
         for pth_cost, pth in zip(lengths, paths):
-            upd = (1 / (cost + pth_cost)) / self.n_probas
+            upd = (1 / cost) / self.n_probas
+            # upd = (1 / (cost + pth_cost)) / self.n_probas
             m_upd = upd
             for i in range(len(pth)):
                 c1, c2 = pth[i - 1], pth[i]
@@ -451,7 +452,7 @@ class GenerateVisualSvg:
             os.makedirs(savedir)
 
     def __call__(self, paths, *utilities, is_last=False, **costs):
-        width = self._width + 10
+        width = self._width + 40
         contents = """
         <?xml version="1.0" encoding="utf-8" ?>
         <svg width="{}" height="{}" version="1.1"
@@ -473,7 +474,7 @@ class GenerateVisualSvg:
             costs_text, paths_text
         )
         for i, utility in enumerate(utilities):
-            contents += self._render_graph(utility, paths, i * width)
+            contents += self._render_graph(utility, paths, 20 + i * width)
             paths = []
         contents += "</svg>"
 
