@@ -45,6 +45,25 @@ def main(argv=None):
 
     graph_name = os.path.split(opts.file)[1].rpartition(".")[0]
 
+    params_15n_general = dict(
+        evaporation=0.001,
+        n_probas=100,
+        max_iteration=500,
+    )
+    params_15n_for_seed777 = dict(
+        evaporation=0.0001,
+        n_probas=1000,
+        max_iteration=50,
+    )
+    params_30n = dict(
+        evaporation=0.00001,
+        n_probas=500,
+        max_iteration=300,
+    )
+
+    params = params_30n
+
+    max_iterations = params.pop("max_iteration")
     # heuristic = tsp_aco.HeuristicV1(
     #     distances=distmat,
     #     n_salesmans=opts.m,
@@ -60,17 +79,15 @@ def main(argv=None):
         n_salesmans=opts.m,
         herdness=1,
         greedness=2,
-        evaporation=0.001,
-        # n_probas=int(opts.n * math.log(opts.n)) * opts.m,
-        n_probas=100,
         pheromone_update_scale=0.0001,
         use_jump_balancing=False,
+        **params
     )
     best_cost, best_paths = tsp_aco.solve_tsp(
         distances=distmat,
         # callback=tsp_aco.GenerateVisualSvg(f"frames/test", coordinates),
         callback=tsp_aco.GenerateVisualSvg(f"frames/v2_{graph_name}", coordinates),
-        max_iteration=500,
+        max_iteration=max_iterations,
         heuristic=heuristic,
     )
     # distmat_norm = sum(map(sum, distmat)) / (len(distmat) ** 2)
